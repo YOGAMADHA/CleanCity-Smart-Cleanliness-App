@@ -1,0 +1,6 @@
+{
+  "name": "CleanCity",
+  "description": "Smart City cleanliness management Android app for citizens to report cleanliness issues and administrators to track and resolve complaints.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

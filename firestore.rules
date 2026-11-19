@@ -1,0 +1,152 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Reusable Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        ('email_verified' in request.auth.token &&
+         request.auth.token.email_verified == true &&
+         'email' in request.auth.token &&
+         request.auth.token.email == 'yogamadha126@gmail.com')
+      );
+    }
+
+    // 3. Entity Validators
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 80 &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 120 &&
+             data.phone is string && data.phone.size() <= 20 &&
+             data.ward is string && data.ward.size() <= 80 &&
+             data.role in ['citizen', 'admin'];
+    }
+
+    function isValidComplaint(data) {
+      return data.complaintCode is string && data.complaintCode.size() >= 4 && data.complaintCode.size() <= 30 &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.citizenName is string && data.citizenName.size() >= 1 && data.citizenName.size() <= 80 &&
+             data.citizenEmail is string && data.citizenEmail.size() >= 3 && data.citizenEmail.size() <= 120 &&
+             data.citizenPhone is string && data.citizenPhone.size() <= 20 &&
+             data.title is string && data.title.size() >= 3 && data.title.size() <= 120 &&
+             data.category in [
+               'Garbage Overflow',
+               'Roadside Waste',
+               'Illegal Dumping',
+               'Drainage Issues',
+               'Public Area Cleanliness',
+               'Other'
+             ] &&
+             data.description is string && data.description.size() >= 5 && data.description.size() <= 1000 &&
+             data.locationText is string && data.locationText.size() >= 2 && data.locationText.size() <= 200 &&
+             (!('latitude' in data) || data.latitude == null || data.latitude is number) &&
+             (!('longitude' in data) || data.longitude == null || data.longitude is number) &&
+             data.imageBase64 is string && data.imageBase64.size() <= 350000 &&
+             data.status in ['Reported', 'In Progress', 'Resolved'] &&
+             data.adminRemarks is string && data.adminRemarks.size() <= 500 &&
+             data.statusHistory is list &&
+             data.statusHistory.size() >= 1 &&
+             data.statusHistory.size() <= 30 &&
+             data.statusHistory[0] is map;
+    }
+
+    // 4. Users Collection (PII isolated to owner and verified admin)
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().role == 'citizen' &&
+                       incoming().keys().hasAll(['userId', 'name', 'email', 'phone', 'ward', 'role', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'name', 'email', 'phone', 'ward', 'role', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == existing().userId &&
+                       incoming().email == existing().email &&
+                       incoming().role == existing().role &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone', 'ward', 'updatedAt']);
+
+      allow delete: if false;
+    }
+
+    // 5. Admins Lookup Collection (Server/Console managed; self-get only)
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && isValidId(adminUid) && request.auth.uid == adminUid;
+      allow list, create, update, delete: if false;
+    }
+
+    // 6. Complaints Collection (Owner-scoped for citizens, global management for admins)
+    match /complaints/{complaintId} {
+      allow get: if isSignedIn() && isValidId(complaintId) && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() &&
+                       isValidId(complaintId) &&
+                       isValidComplaint(incoming()) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'Reported' &&
+                       incoming().adminRemarks == '' &&
+                       incoming().keys().hasAll([
+                         'complaintCode', 'userId', 'citizenName', 'citizenEmail', 'citizenPhone',
+                         'title', 'category', 'description', 'locationText', 'imageBase64',
+                         'status', 'adminRemarks', 'statusHistory', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'complaintCode', 'userId', 'citizenName', 'citizenEmail', 'citizenPhone',
+                         'title', 'category', 'description', 'locationText', 'latitude', 'longitude',
+                         'imageBase64', 'status', 'adminRemarks', 'statusHistory', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time;
+
+      allow update: if isSignedIn() &&
+                       isValidId(complaintId) &&
+                       isValidComplaint(incoming()) &&
+                       isAdmin() &&
+                       incoming().userId == existing().userId &&
+                       incoming().complaintCode == existing().complaintCode &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'status', 'adminRemarks', 'statusHistory', 'updatedAt'
+                       ]);
+
+      allow delete: if isSignedIn() &&
+                       isValidId(complaintId) &&
+                       (isAdmin() || (existing().userId == request.auth.uid && existing().status == 'Reported'));
+    }
+  }
+}

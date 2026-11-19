@@ -1,0 +1,176 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Citizen or Admin profile metadata stored per authenticated user.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Authenticated Firebase UID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of the citizen or admin"
+        },
+        "email": {
+          "type": "string",
+          "description": "Verified email address"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Contact phone number"
+        },
+        "ward": {
+          "type": "string",
+          "description": "City ward or neighborhood zone"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["citizen", "admin"],
+          "description": "Access role; self-registration only permits citizen"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp on creation (FieldValue.serverTimestamp())"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp on update (FieldValue.serverTimestamp())"
+        }
+      },
+      "required": ["userId", "name", "email", "phone", "ward", "role", "createdAt", "updatedAt"]
+    },
+    "AdminMarker": {
+      "title": "AdminMarker",
+      "description": "Server-provisioned marker document granting admin privileges to a UID.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "Admin email"
+        }
+      },
+      "required": ["email"]
+    },
+    "Complaint": {
+      "title": "Complaint",
+      "description": "Smart City cleanliness complaint submitted by a citizen and managed by admins.",
+      "type": "object",
+      "properties": {
+        "complaintCode": {
+          "type": "string",
+          "description": "Unique human-readable complaint tracking code (e.g., CC-2026-8421)"
+        },
+        "userId": {
+          "type": "string",
+          "description": "UID of the citizen who submitted the complaint"
+        },
+        "citizenName": {
+          "type": "string",
+          "description": "Name of the citizen reporter"
+        },
+        "citizenEmail": {
+          "type": "string",
+          "description": "Email of the citizen reporter"
+        },
+        "citizenPhone": {
+          "type": "string",
+          "description": "Phone number of the citizen reporter"
+        },
+        "title": {
+          "type": "string",
+          "description": "Short complaint headline"
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "Garbage Overflow",
+            "Roadside Waste",
+            "Illegal Dumping",
+            "Drainage Issues",
+            "Public Area Cleanliness",
+            "Other"
+          ],
+          "description": "Cleanliness issue category"
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description of the cleanliness issue"
+        },
+        "locationText": {
+          "type": "string",
+          "description": "Address or GPS location string"
+        },
+        "latitude": {
+          "type": "number",
+          "description": "Optional GPS latitude"
+        },
+        "longitude": {
+          "type": "number",
+          "description": "Optional GPS longitude"
+        },
+        "imageBase64": {
+          "type": "string",
+          "description": "Compressed JPEG thumbnail encoded as Base64 (empty string if none)"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Reported", "In Progress", "Resolved"],
+          "description": "Current resolution lifecycle status"
+        },
+        "adminRemarks": {
+          "type": "string",
+          "description": "Official remarks added by city administrator"
+        },
+        "statusHistory": {
+          "type": "array",
+          "description": "Bounded chronological status history entries (native maps)"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when complaint was submitted"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest update"
+        }
+      },
+      "required": [
+        "complaintCode",
+        "userId",
+        "citizenName",
+        "citizenEmail",
+        "citizenPhone",
+        "title",
+        "category",
+        "description",
+        "locationText",
+        "imageBase64",
+        "status",
+        "adminRemarks",
+        "statusHistory",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles isolated by UID; admins can inspect profiles for complaint context."
+    },
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminMarker" },
+      "description": "Read-only admin designation lookup documents."
+    },
+    "/complaints/{complaintId}": {
+      "schema": { "$ref": "#/entities/Complaint" },
+      "description": "Cleanliness complaints scoped by userId for citizens and accessible globally to admins."
+    }
+  }
+}
